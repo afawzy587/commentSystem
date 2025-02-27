@@ -1,0 +1,67 @@
+services:
+  nginx:
+    image: nginx:stable-alpine3.20
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8000:80"
+    volumes:
+      - ./docker/nginx.development.conf:/etc/nginx/conf.d/default.conf
+      - ./public:/var/www/html/public
+
+  backend: &BASE
+    image: comment_system
+    build:
+      dockerfile: ./docker/Dockerfile.development
+      context: .
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    volumes:
+      - .:/var/www/html
+      - storage:/var/www/html/storage
+      - ./public:/var/www/html/public
+      - ./docker/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+
+  worker:
+    <<: *BASE
+    command: [ "php", "artisan", "queue:work", "-v", "redis" ]
+    depends_on:
+      - backend
+
+  mysql:
+    image: mysql:8.4.2
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker/volumes/mysql-data:/var/lib/mysql
+    environment:
+        MYSQL_ROOT_PASSWORD: "password"
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      - PMA_HOSTS=mysql
+    ports:
+      - "8001:80"
+  redis:
+    image: redis:7.4.0-alpine
+    restart: unless-stopped
+    volumes:
+      - ./docker/volumes/redis-data:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  mysql-data:
+  redis-data:
+  storage:
+
+networks:
+  comment_system:
+    driver: bridge
